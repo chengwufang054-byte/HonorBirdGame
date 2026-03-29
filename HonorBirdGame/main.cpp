@@ -19,19 +19,26 @@ int main()
 	bird.setOutlineThickness(3.f);
 	bird.setOutlineColor(sf::Color::Black);
 
+	sf::Vector2f birdStartPos(80.f, 320.f);
+
 	sf::CircleShape enemy(20.f);
 	enemy.setPosition(520.f, 440.f);
 	enemy.setFillColor(sf::Color(160, 80, 200));
 	enemy.setOutlineThickness(3.f);
 	enemy.setOutlineColor(sf::Color::Black);
 
-	sf::Vector2f birdStartPos(80.f, 320.f);
+	sf::CircleShape enemy2(20.f);
+	enemy2.setPosition(600.f, 440.f);
+	enemy2.setFillColor(sf::Color(255, 170, 0));
+	enemy2.setOutlineThickness(3.f);
+	enemy2.setOutlineColor(sf::Color::Black);
 
 	bool birdReady = true;
-	bool enemyHit = false;
-	bool enemyAlive = true;
 	bool isDragging = false;
 
+	bool enemyAlive = true;
+	bool enemy2Alive = true;
+	
 	float birdSpeedX = 0.f;
 	float birdSpeedY = 0.f;
 	float gravity = 0.0012f;
@@ -54,9 +61,12 @@ int main()
 			{
 				if (event.key.code == sf::Keyboard::Space)
 				{
-					birdReady = false;
-					birdSpeedX = 0.45f;
-					birdSpeedY = -0.55f;
+					if (birdReady&&!isDragging)
+					{
+						birdReady = false;
+						birdSpeedX = 0.45f;
+						birdSpeedY = -0.55f;
+					}
 				}
 
 				if (event.key.code == sf::Keyboard::R)
@@ -67,11 +77,12 @@ int main()
 					birdSpeedX = 0.f;
 					birdSpeedY = 0.f;
 					bird.setFillColor(sf::Color::Red);
-
-					enemyHit = false;
+					
 					enemyAlive = true;
-					enemy.setFillColor(sf::Color(160, 80, 200));
+					enemy2Alive = true;
 
+					enemy.setFillColor(sf::Color(160, 80, 200));
+					enemy2.setFillColor(sf::Color(255, 170, 0));
 				}	
 
 			}
@@ -95,6 +106,16 @@ int main()
 				sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel);
 
 				sf::Vector2f desiredPos(mousePos.x - 20.f, mousePos.y - 20.f);
+
+				if (desiredPos.x > birdStartPos.x) 
+				{
+					desiredPos.x = birdStartPos.x;
+				}
+
+				if (desiredPos.y  < 240.f)
+				{
+					desiredPos.y = 240.f;
+				}
 				sf::Vector2f offset = desiredPos - birdStartPos;
 
 				float distance = std::sqrt(offset.x * offset.x + offset.y * offset.y);
@@ -113,12 +134,15 @@ int main()
 			{
 				if (event.mouseButton.button == sf::Mouse::Left)
 				{
+					sf::Vector2f dragOffset = bird.getPosition() - birdStartPos;
+
+					birdSpeedX = -dragOffset.x * launchPower;
+					birdSpeedY = -dragOffset.y * launchPower;
+
+					bird.setPosition(birdStartPos);
+
 					birdReady = false;
 					isDragging = false;
-
-					birdSpeedX = -(bird.getPosition().x - birdStartPos.x) * launchPower;
-					birdSpeedY = -(bird.getPosition().y - birdStartPos.y) * launchPower;
-
 				}
 			}
 
@@ -163,6 +187,7 @@ int main()
 
 				float birdCenterX = bird.getPosition().x + 20.f;
 				float birdCenterY = bird.getPosition().y + 20.f;
+
 				float enemyCenterX = enemy.getPosition().x + 20.f;
 				float enemyCenterY = enemy.getPosition().y + 20.f;
 
@@ -170,15 +195,26 @@ int main()
 				float dy = birdCenterY - enemyCenterY;
 				float distance = std::sqrt(dx * dx + dy * dy);
 
-				if (!enemyHit && distance <= 40.f)
+				if (enemyAlive && distance <= 40.f)
 				{
-					enemyHit = true;
 					enemyAlive = false;
 				}
 
+				float enemy2CenterX = enemy2.getPosition().x + 20.f;
+				float enemy2CenterY = enemy2.getPosition().y + 20.f;
+				
+				float dx2 = birdCenterX - enemy2CenterX;
+				float dy2 = birdCenterY - enemy2CenterY;
+				float distance2 = std::sqrt(dx2 * dx2 + dy2 * dy2);
+
+				if (enemy2Alive && distance2 <= 40.f) 
+				{
+					enemy2Alive = false;
+				}
 			}
 
-			if (!enemyAlive)
+			// ===== Ê¤ÀûÌáÊ¾ =====
+			if (!enemyAlive && !enemy2Alive)
 			{
 				window.setTitle("HonorBirdGame - You Win!");
 			}
@@ -191,11 +227,28 @@ int main()
 		window.clear(sf::Color(135,206,235));
 		window.draw(ground);
 		window.draw(slingPost);
+		
+		if (isDragging)
+		{
+			sf::Vertex line[] =
+			{
+			sf::Vertex(sf::Vector2f(birdStartPos.x + 20.f, birdStartPos.y + 20.f),sf::Color::Black),
+			sf::Vertex(sf::Vector2f(bird.getPosition().x + 20.f, bird.getPosition().y + 20.f),sf::Color::Black)
+			};
+
+			window.draw(line, 2, sf::Lines);
+		}
+
 		window.draw(bird);
 
 		if (enemyAlive) 
 		{
 			window.draw(enemy);
+		}
+
+		if (enemy2Alive)
+		{
+			window.draw(enemy2);
 		}
 
 		window.display();
