@@ -1,9 +1,22 @@
 #include<SFML/Graphics.hpp>
 #include<cmath>
+
 int main() 
 {
 	 // ===== 初始化区 =====
 	sf::RenderWindow window(sf::VideoMode(800, 600), "HonorBirdGame");
+
+	sf::Font font;
+	if (!font.loadFromFile("C:/Windows/Fonts/arial.ttf"))
+	{
+		return -1;
+	}
+	
+	sf::Text infoText;
+	infoText.setFont(font);
+	infoText.setCharacterSize(24);
+	infoText.setFillColor(sf::Color::Black);
+	infoText.setPosition(20.f, 20.f);
 
 	sf::RectangleShape ground(sf::Vector2f(800.f, 100.f));
 	ground.setPosition(0.f, 500.f);
@@ -33,11 +46,21 @@ int main()
 	enemy2.setOutlineThickness(3.f);
 	enemy2.setOutlineColor(sf::Color::Black);
 
+	sf::RectangleShape block(sf::Vector2f(30.f, 80.f));
+	block.setPosition(470.f, 420.f);
+	block.setFillColor(sf::Color(120, 90, 60));
+
 	bool birdReady = true;
 	bool isDragging = false;
 
 	bool enemyAlive = true;
 	bool enemy2Alive = true;
+
+	bool blockAlive = true;
+	int blockHp = 2;
+	bool blockCollisionHandled = false;
+
+	bool roundOver = false;
 	
 	float birdSpeedX = 0.f;
 	float birdSpeedY = 0.f;
@@ -66,6 +89,7 @@ int main()
 						birdReady = false;
 						birdSpeedX = 0.45f;
 						birdSpeedY = -0.55f;
+						roundOver = false;
 					}
 				}
 
@@ -83,10 +107,17 @@ int main()
 
 					enemy.setFillColor(sf::Color(160, 80, 200));
 					enemy2.setFillColor(sf::Color(255, 170, 0));
+
+					blockAlive = true;
+					blockHp = 2;
+					blockCollisionHandled = false;
+					block.setFillColor(sf::Color(120, 90, 60));
+
+					roundOver = false;
 				}	
 
 			}
-			if (birdReady && event.type == sf::Event::MouseButtonPressed)
+			if (birdReady &&!roundOver&& event.type == sf::Event::MouseButtonPressed)
 				{
 					if (event.mouseButton.button == sf::Mouse::Left)
 					{
@@ -100,7 +131,7 @@ int main()
 					}
 				}
 
-			if (birdReady && isDragging && event.type == sf::Event::MouseMoved)
+			if (birdReady &&!roundOver&&isDragging && event.type == sf::Event::MouseMoved)
 			{
 				sf::Vector2i mousePixel(event.mouseMove.x, event.mouseMove.y);
 				sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel);
@@ -130,7 +161,7 @@ int main()
 				bird.setPosition(desiredPos);
 			}
 
-			if (birdReady && isDragging && event.type == sf::Event::MouseButtonReleased)
+			if (birdReady &&!roundOver&& isDragging && event.type == sf::Event::MouseButtonReleased)
 			{
 				if (event.mouseButton.button == sf::Mouse::Left)
 				{
@@ -143,6 +174,7 @@ int main()
 
 					birdReady = false;
 					isDragging = false;
+					roundOver = false;
 				}
 			}
 
@@ -182,8 +214,36 @@ int main()
 					birdSpeedX = 0.f;
 					birdSpeedY = 0.f;
 					bird.setFillColor(sf::Color(150, 150, 150));
+					roundOver = true;
 
 				}
+
+				if (blockAlive && bird.getGlobalBounds().intersects(block.getGlobalBounds()))
+				{
+					if (!blockCollisionHandled)
+					{
+						blockHp--;
+						birdSpeedX *= 0.7;
+						birdSpeedY *= 0.7;
+						
+						if (blockHp == 1) 
+						{
+							block.setFillColor(sf::Color(80, 60, 40));
+						}
+
+						if (blockHp <= 0)
+						{
+							blockAlive = false;
+						}
+
+						blockCollisionHandled = true;
+					}
+				}
+				else
+				{
+					blockCollisionHandled = false;
+				}
+
 
 				float birdCenterX = bird.getPosition().x + 20.f;
 				float birdCenterY = bird.getPosition().y + 20.f;
@@ -218,9 +278,34 @@ int main()
 			{
 				window.setTitle("HonorBirdGame - You Win!");
 			}
+			else if (roundOver) 
+			{
+				window.setTitle("HonorBirdGame - Press R to Retey");
+			}
 			else
 			{
 				window.setTitle("HonorBirdGame");
+			}
+
+			if (!enemyAlive && !enemy2Alive)
+			{
+				infoText.setString("You Win! Press R to Retry");
+			}
+			else if (roundOver)
+			{
+				infoText.setString("Press R to Retry");
+			}
+			else if (isDragging)
+			{
+				infoText.setString("Release mouse to Launch");
+			}
+			else if (birdReady)
+			{
+				infoText.setString("Drag or press SPACE to launch");
+			}
+			else 
+			{
+				infoText.setString("");
 			}
 
 		// ===== 绘制区 =====
@@ -241,6 +326,11 @@ int main()
 
 		window.draw(bird);
 
+		if (blockAlive) 
+		{
+			window.draw(block);
+		}
+
 		if (enemyAlive) 
 		{
 			window.draw(enemy);
@@ -250,6 +340,8 @@ int main()
 		{
 			window.draw(enemy2);
 		}
+
+		window.draw(infoText);
 
 		window.display();
 	}	
