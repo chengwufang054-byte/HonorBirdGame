@@ -162,3 +162,23 @@
 
 \- 实现掉落中的 block2 砸死下方 enemy 的结构击杀效果
 
+
+
+\## Day 8
+
+\- 加入 GameState，形成 StartMenu / Playing / LevelClear / Win / Lose 的基本流程
+
+\- 实现按 Enter 从开始界面进入游戏
+
+\- 实现通关后进入 LevelClear 过渡界面，而不是直接瞬间切到下一关
+
+\- 加入 currentLevel 与 nextLevel，完成最小双关卡系统
+
+\- 实现 Level 1 通关后进入 Level 2，Level 2 通关后进入最终胜利界面
+
+\- 将 LevelClear 文案改为动态显示当前关卡与下一关
+
+\- 提取 loadLevel 与 resetRoundForCurrentLevel，减少重复的重置与摆位代码
+
+\- 为第二关设置不同的 bird 数量，使两关不仅布局不同，难度也不同
+
