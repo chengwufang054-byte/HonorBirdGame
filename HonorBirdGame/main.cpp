@@ -1,924 +1,834 @@
-#include<SFML/Graphics.hpp>
-#include<cmath>
-#include<string>
+#include <SFML/Graphics.hpp>
+#include <array>
+#include <cmath>
+#include <string>
 
+// ==================== 1. 基础类型定义 ====================
 
 enum class GameState
 {
-	StartMenu,
-	Playing,
-	LevelClear,
-	Win,
-	Lose
+    StartMenu,
+    Playing,
+    LevelClear,
+    Win,
+    Lose
 };
 
 enum class BirdType
 {
-	Normal,
-	Charlotte,
-	Mulan
+    Normal,
+    Charlotte,
+    Mulan
 };
 
 struct BirdStats
 {
-	sf::Color color;
-	float launchPower;
-	int blockDamage;
+    sf::Color color;
+    float launchPower;
+    int blockDamage;
 };
 
-//构建LevelDate统一管理关卡数据
+struct Enemy
+{
+    sf::CircleShape shape;
+    bool enabled = false;
+    bool alive = false;
+};
+
+struct Block
+{
+    sf::RectangleShape shape;
+    int maxHp = 2;    
+    int hp = 2;
+    bool enabled = false;
+    bool alive = false;
+    bool collisionHandled = false;
+};
+
 struct LevelData
 {
-	sf::Vector2f birdStartPos;
-	sf::Vector2f enemyStartPos;
-	sf::Vector2f enemy2StartPos;
-	sf::Vector2f enemy3StartPos;
-
-	sf::Vector2f blockStartPos;
-	sf::Vector2f block2StartPos;
-	sf::Vector2f block3StartPos;
-
-	int birdsCount;
-
-	bool hasEnemy3;
-	bool hasBlock3;
-	bool needBothSupportsForBlock2;
+    sf::Vector2f birdStartPos;
+    std::array<sf::Vector2f, 3> enemyPositions;
+    std::array<bool, 3> enemyEnabled;
+    std::array<sf::Vector2f, 3> blockPositions;
+    std::array<bool, 3> blockEnabled;
+    std::array<int, 3> blockHp;
+    int birdsCount = 3;
+    bool needBothSupportsForBeam = false;
 };
 
-//判断还有没有敌人
-bool hasRemainingEnemies(int currentLevel, bool enemyAlive,
-	bool enemy2Alive, bool enemy3Alive)
+struct RuntimeState
 {
-	if (currentLevel == 1)
-	{
-		return enemyAlive || enemy2Alive;
-	}
-	else if (currentLevel==2)
-	{
-		return enemyAlive || enemy2Alive || enemy3Alive;
-	}
+    GameState gameState = GameState::StartMenu;
+    int currentLevel = 1;
+    int nextLevel = 1;
 
-	return false;
-}
- 
-//判断是不是全清了
-bool allEnemiesDefeated(int currentLevel, bool enemyAlive, bool enemy2Alive,
-	bool enemy3Alive)
-{ 
-	if (currentLevel == 1)
-	{
-		return !enemyAlive && !enemy2Alive;
-	}
-	else if (currentLevel == 2)
-	{
-		return !enemyAlive && !enemy2Alive && !enemy3Alive;
-	}
+    bool birdReady = true;
+    bool isDragging = false;
+    bool roundOver = false;
 
-	return false;
+    bool enemy2Dropped = false;
+    bool enemy2SupportedByBeam = true;
+    bool beamFalling = false;
+
+    int birdsLeft = 3;
+
+    float birdSpeedX = 0.f;
+    float birdSpeedY = 0.f;
+    float gravity = 0.0012f;
+    float maxDragDistance = 120.f;
+
+    BirdType currentBirdType = BirdType::Normal;
+    BirdStats currentBirdStats{ sf::Color::Red, 0.03f, 1 };
+    float launchPower = 0.03f;
 };
 
-//bird命中敌人
-void checkBirdHitEnemies(
-	const sf::CircleShape& bird,
-	int currentLevel,
-	sf::CircleShape& enemy,
-	bool& enemyAlive,
-	sf::CircleShape& enemy2,
-	bool& enemy2Alive,
-	sf::CircleShape& enemy3,
-	bool& enemy3Alive)
+// ==================== 2. 配置函数区 ====================
+
+BirdStats getBirdStats(BirdType type)
 {
-	float birdCenterX = bird.getPosition().x + 20.f;
-	float birdCenterY = bird.getPosition().y + 20.f;
+    BirdStats stats{};
 
-	float enemyCenterX = enemy.getPosition().x + 20.f;
-	float enemyCenterY = enemy.getPosition().y + 20.f;
+    if (type == BirdType::Normal)
+    {
+        stats.color = sf::Color::Red;
+        stats.launchPower = 0.03f;
+        stats.blockDamage = 1;
+    }
+    else if (type == BirdType::Charlotte)
+    {
+        stats.color = sf::Color(255, 120, 180);
+        stats.launchPower = 0.035f;
+        stats.blockDamage = 1;
+    }
+    else if (type == BirdType::Mulan)
+    {
+        stats.color = sf::Color(255, 200, 80);
+        stats.launchPower = 0.028f;
+        stats.blockDamage = 2;
+    }
 
-	float dx = birdCenterX - enemyCenterX;
-	float dy = birdCenterY - enemyCenterY;
-	float distance = std::sqrt(dx * dx + dy * dy);
-
-	if (enemyAlive && distance <= 40.f)
-	{
-		enemyAlive = false;
-	}
-
-	float enemy2CenterX = enemy2.getPosition().x + 20.f;
-	float enemy2CenterY = enemy2.getPosition().y + 20.f;
-
-	float dx2 = birdCenterX - enemy2CenterX;
-	float dy2 = birdCenterY - enemy2CenterY;
-	float distance2 = std::sqrt(dx2 * dx2 + dy2 * dy2);
-
-	if (enemy2Alive && distance2 <= 40.f)
-	{
-		enemy2Alive = false;
-	}
-
-	if (currentLevel == 2)
-	{
-		float enemy3CenterX = enemy3.getPosition().x + 20.f;
-		float enemy3CenterY = enemy3.getPosition().y + 20.f;
-
-		float dx3 = birdCenterX - enemy3CenterX;
-		float dy3 = birdCenterY - enemy3CenterY;
-		float distance3 = std::sqrt(dx3 * dx3 + dy3 * dy3);
-
-		if (enemy3Alive && distance3 <= 40.f)
-		{
-			enemy3Alive = false;
-		}
-	}
+    return stats;
 }
 
-//统一绘制所有敌人
-void drawEnemies(
-	sf::RenderWindow& window,
-	int currentLevel,
-	const sf::CircleShape& enemy,
-	bool enemyAlive,
-	const sf::CircleShape& enemy2,
-	bool enemy2Alive,
-	const sf::CircleShape& enemy3,
-	bool enemy3Alive
-)
+std::string birdTypeToString(BirdType type)
 {
-	if (enemyAlive)
-	{
-		window.draw(enemy);
-	}
-
-	if (enemy2Alive)
-	{
-		window.draw(enemy2);
-	}
-
-	if (currentLevel==2&&enemy3Alive)
-	{
-		window.draw(enemy3);
-	}
+    if (type == BirdType::Normal)
+    {
+        return "Normal";
+    }
+    if (type == BirdType::Charlotte)
+    {
+        return "Charlotte";
+    }
+    return "Mulan";
 }
 
 LevelData loadLevel(int level)
 {
-	LevelData data;
+    LevelData data{};
 
-	if (level == 1)
-	{
-		data.birdStartPos = sf::Vector2f(80.f, 320.f);
-		data.enemyStartPos = sf::Vector2f(520.f, 440.f);
-		data.enemy2StartPos = sf::Vector2f(500.f, 360.f);
-		data.enemy3StartPos = sf::Vector2f(-200.f, -200.f);
+    if (level == 1)
+    {
+        data.birdStartPos = sf::Vector2f(80.f, 320.f);
 
-		data.blockStartPos = sf::Vector2f(470.f, 420.f);
-		data.block2StartPos = sf::Vector2f(450.f, 400.f);
-		data.block3StartPos = sf::Vector2f(-200.f, -200.f);
+        data.enemyPositions = {
+            sf::Vector2f(520.f, 440.f),
+            sf::Vector2f(500.f, 360.f),
+            sf::Vector2f(-200.f, -200.f) };
 
-		data.birdsCount = 3;
+        data.enemyEnabled = { true, true, false };
 
-		data.hasEnemy3 = false;
-		data.hasBlock3 = false;
-		data.needBothSupportsForBlock2 = false;
-	}
-	else if (level == 2)
-	{
-		data.birdStartPos = sf::Vector2f(80.f, 320.f);
+        data.blockPositions = {
+            sf::Vector2f(470.f, 420.f),
+            sf::Vector2f(450.f, 400.f),
+            sf::Vector2f(-200.f, -200.f) };
 
-		data.enemyStartPos = sf::Vector2f(600.f, 440.f);
-		data.enemy2StartPos = sf::Vector2f(590.f, 320.f);
-		data.enemy3StartPos = sf::Vector2f(630.f, 440.f);
+        data.blockEnabled = { true, true, false };
+        data.blockHp = { 2, 2, 3 };
+        data.birdsCount = 3;
+        data.needBothSupportsForBeam = false;
+    }
+    else if (level == 2)
+    {
+        data.birdStartPos = sf::Vector2f(80.f, 320.f);
 
-		data.blockStartPos = sf::Vector2f(540.f, 420.f);
-		data.block2StartPos = sf::Vector2f(520.f, 360.f);
-		data.block3StartPos = sf::Vector2f(650.f, 420.f);
+        data.enemyPositions = {
+            sf::Vector2f(600.f, 440.f),
+            sf::Vector2f(590.f, 320.f),
+            sf::Vector2f(630.f, 440.f) };
 
-		data.birdsCount = 2;
+        data.enemyEnabled = { true, true, true };
 
-		data.hasEnemy3 = true;
-		data.hasBlock3 = true;
-		data.needBothSupportsForBlock2 = true;
-	}
+        data.blockPositions = {
+            sf::Vector2f(540.f, 420.f),
+            sf::Vector2f(520.f, 360.f),
+            sf::Vector2f(650.f, 420.f) };
 
-	return data;
+        data.blockEnabled = { true, true, true };
+        data.blockHp = { 2, 2, 3 };
+        data.birdsCount = 2;
+        data.needBothSupportsForBeam = true;
+    }
+
+    return data;
 }
 
-void resetRoundForCurrentLevel(
-	sf::CircleShape& bird,
-	sf::CircleShape& enemy,
-	sf::CircleShape& enemy2,
-	sf::CircleShape& enemy3,
-	sf::RectangleShape& block,
-	sf::RectangleShape& block2,
-	sf::RectangleShape& block3,
-	const LevelData& currentLevelData,
-	bool& birdReady,
-	bool& isDragging,
-	bool& enemyAlive,
-	bool& enemy2Alive,
-	bool& enemy3Alive,
-	bool& enemy2Dropped,
-	bool& enemy2SupportedByBlock2,
-	bool& blockAlive,
-	int& blockHp,
-	bool& blockCollisionHandled,
-	bool& block2Alive,
-	int& block2Hp,
-	bool& block2CollisionHandled,
-	bool& block2Falling,
-	bool& block3Alive,
-	int& block3Hp,
-	bool& block3CollisionHandled,
-	bool& roundOver,
-	int& birdsLeft,
-	float& birdSpeedX,
-	float& birdSpeedY,
-    int currentLevel)
+// ==================== 3. 初始化 / 重置函数区 ====================
+
+void applyBirdStats(sf::CircleShape& bird, RuntimeState& state, BirdType type)
 {
-	bird.setPosition(currentLevelData.birdStartPos);
-	birdReady = true;
-	isDragging = false;
-	birdSpeedX = 0.f;
-	birdSpeedY = 0.f;
-	bird.setFillColor(sf::Color::Red);
-
-	birdsLeft = currentLevelData.birdsCount;
-
-	enemyAlive = true;
-	enemy2Alive = true;
-	enemy2Dropped = false;
-	enemy2SupportedByBlock2 = true;
-	enemy.setPosition(currentLevelData.enemyStartPos);
-	enemy2.setPosition(currentLevelData.enemy2StartPos);
-	enemy3.setPosition(currentLevelData.enemy3StartPos);
-	enemy.setFillColor(sf::Color(160, 80, 200));
-	enemy2.setFillColor(sf::Color(255, 170, 0));
-	enemy3.setFillColor(sf::Color(80, 160, 255));
-
-	enemy3Alive = currentLevelData.hasEnemy3;
-
-
-	blockAlive = true;
-	blockHp = 2;
-	blockCollisionHandled = false;
-	block.setPosition(currentLevelData.blockStartPos);
-	block.setFillColor(sf::Color(120, 90, 60));
-
-	block2Alive = true;
-	block2Hp = 2;
-	block2CollisionHandled = false;
-	block2Falling = false;
-	block2.setPosition(currentLevelData.block2StartPos);
-	block2.setFillColor(sf::Color(120, 90, 60));
-	
-	block3Alive = currentLevelData.hasBlock3;
-	block3Hp = 3;
-	block3CollisionHandled = false;
-	block3.setPosition(currentLevelData.block3StartPos);
-	block3.setFillColor(sf::Color(120, 90, 60));
-
-	roundOver = false;
+    state.currentBirdType = type;
+    state.currentBirdStats = getBirdStats(type);
+    state.launchPower = state.currentBirdStats.launchPower;
+    bird.setFillColor(state.currentBirdStats.color);
 }
 
-//block碰撞函数
+void resetLevel(
+    const LevelData& level,
+    sf::CircleShape& bird,
+    std::array<Enemy, 3>& enemies,
+    std::array<Block, 3>& blocks,
+    RuntimeState& state)
+{
+    bird.setPosition(level.birdStartPos);
+    applyBirdStats(bird, state, BirdType::Normal);
+
+    state.birdReady = true;
+    state.isDragging = false;
+    state.roundOver = false;
+    state.enemy2Dropped = false;
+    state.enemy2SupportedByBeam = true;
+    state.beamFalling = false;
+    state.birdsLeft = level.birdsCount;
+    state.birdSpeedX = 0.f;
+    state.birdSpeedY = 0.f;
+
+    for (std::size_t i = 0; i < enemies.size(); ++i)
+    {
+        enemies[i].enabled = level.enemyEnabled[i];
+        enemies[i].alive = level.enemyEnabled[i];
+        enemies[i].shape.setPosition(level.enemyPositions[i]);
+    }
+
+    for (std::size_t i = 0; i < blocks.size(); ++i)
+    {
+        blocks[i].enabled = level.blockEnabled[i];
+        blocks[i].alive = level.blockEnabled[i];
+        blocks[i].maxHp = level.blockHp[i];
+        blocks[i].hp = level.blockHp[i];
+        blocks[i].collisionHandled = false;
+        blocks[i].shape.setPosition(level.blockPositions[i]);
+        blocks[i].shape.setFillColor(sf::Color(120, 90, 60));
+    }
+}
+
+// ==================== 4. 逻辑辅助函数区 ====================
+
+bool hasRemainingEnemies(const std::array<Enemy, 3>& enemies)
+{
+    for (const Enemy& enemy : enemies)
+    {
+        if (enemy.enabled && enemy.alive)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool allEnemiesDefeated(const std::array<Enemy, 3>& enemies)
+{
+    for (const Enemy& enemy : enemies)
+    {
+        if (enemy.enabled && enemy.alive)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void handleBirdHitBlock(
-	const sf::CircleShape& bird,
-	sf::RectangleShape& blockShape,
-	bool& blockAlive,
-	int& blockHp,
-	bool& blockCollisionHandled,
-	float& birdSpeedX,
-	float& birdSpeedY)
+    const sf::CircleShape& bird,
+    Block& block,
+    RuntimeState& state)
 {
-	if (blockAlive && bird.getGlobalBounds().intersects(blockShape.getGlobalBounds()))
-	{
-		if (!blockCollisionHandled)
-		{
-			blockHp--;
-			birdSpeedX *= 0.7f;
-			birdSpeedY *= 0.7f;
+    if (!block.enabled || !block.alive)
+    {
+        block.collisionHandled = false;
+        return;
+    }
 
-			if (blockHp == 2)
-			{
-				blockShape.setFillColor(sf::Color(100, 75, 50));
-			}
-			else if (blockHp == 1)
-			{
-				blockShape.setFillColor(sf::Color(80, 60, 40));
-			}
+    if (bird.getGlobalBounds().intersects(block.shape.getGlobalBounds()))
+    {
+        if (!block.collisionHandled)
+        {
+            block.hp -= state.currentBirdStats.blockDamage;
+            state.birdSpeedX *= 0.7f;
+            state.birdSpeedY *= 0.7f;
 
-			if (blockHp <= 0)
-			{
-				blockAlive = false;
-			}
+            if (block.hp == 2)
+            {
+                block.shape.setFillColor(sf::Color(100, 75, 50));
+            }
+            else if (block.hp == 1)
+            {
+                block.shape.setFillColor(sf::Color(80, 60, 40));
+            }
 
-			blockCollisionHandled = true;
-		}
-	}
-	else
-	{
-		blockCollisionHandled = false;
-	}
+            if (block.hp <= 0)
+            {
+                block.alive = false;
+            }
+
+            block.collisionHandled = true;
+        }
+    }
+    else
+    {
+        block.collisionHandled = false;
+    }
 }
+
+void checkBirdHitEnemies(const sf::CircleShape& bird, std::array<Enemy, 3>& enemies)
+{
+    const float birdCenterX = bird.getPosition().x + 20.f;
+    const float birdCenterY = bird.getPosition().y + 20.f;
+
+    for (Enemy& enemy : enemies)
+    {
+        if (!enemy.enabled || !enemy.alive)
+        {
+            continue;
+        }
+
+        const float enemyCenterX = enemy.shape.getPosition().x + 20.f;
+        const float enemyCenterY = enemy.shape.getPosition().y + 20.f;
+        const float dx = birdCenterX - enemyCenterX;
+        const float dy = birdCenterY - enemyCenterY;
+        const float distance = std::sqrt(dx * dx + dy * dy);
+
+        if (distance <= 40.f)
+        {
+            enemy.alive = false;
+        }
+    }
+}
+
+void drawEnemies(sf::RenderWindow& window, const std::array<Enemy, 3>& enemies)
+{
+    for (const Enemy& enemy : enemies)
+    {
+        if (enemy.enabled && enemy.alive)
+        {
+            window.draw(enemy.shape);
+        }
+    }
+}
+
+void drawBlocks(sf::RenderWindow& window, const std::array<Block, 3>& blocks)
+{
+    for (const Block& block : blocks)
+    {
+        if (block.enabled && block.alive)
+        {
+            window.draw(block.shape);
+        }
+    }
+}
+
+// ==================== 5. 主程序 ====================
 
 int main()
 {
-	// ===== 初始化区 =====
-	sf::RenderWindow window(sf::VideoMode(800, 600), "HonorBirdGame");
-
-	sf::Font font;
-	if (!font.loadFromFile("C:/Windows/Fonts/arial.ttf"))
-	{
-		return -1;
-	}
-
-	sf::Text infoText;
-	infoText.setFont(font);
-	infoText.setCharacterSize(24);
-	infoText.setFillColor(sf::Color::Black);
-	infoText.setPosition(20.f, 20.f);
-
-	sf::Text titleText;
-	titleText.setFont(font);
-	titleText.setCharacterSize(42);
-	titleText.setFillColor(sf::Color::Black);
-	titleText.setPosition(200.f, 180.f);
-
-	sf::Text startText;
-	startText.setFont(font);
-	startText.setCharacterSize(24);
-	startText.setFillColor(sf::Color::Black);
-	startText.setPosition(220.f, 280.f);
-
-	sf::Text resultTitleText;
-	resultTitleText.setFont(font);
-	resultTitleText.setCharacterSize(42);
-	resultTitleText.setFillColor(sf::Color::Black);
-	resultTitleText.setPosition(250.f, 180.f);
-
-	sf::Text resultHintText;
-	resultHintText.setFont(font);
-	resultHintText.setCharacterSize(24);
-	resultHintText.setFillColor(sf::Color::Black);
-	resultHintText.setPosition(210.f, 280.f);
-
-	sf::RectangleShape ground(sf::Vector2f(800.f, 100.f));
-	ground.setPosition(0.f, 500.f);
-	ground.setFillColor(sf::Color(80, 180, 80));
-
-	sf::RectangleShape slingPost(sf::Vector2f(12.f, 110.f));
-	slingPost.setPosition(60.f, 290.f);
-	slingPost.setFillColor(sf::Color(139, 69, 19));
-
-	sf::Vector2f birdStartPos(80.f, 320.f);
-	sf::Vector2f enemyStartPos(520.f, 440.f);
-	sf::Vector2f enemy2StartPos(500.f, 360.f);
-	sf::Vector2f enemy3StartPos(-200.f, -200.f);
-	sf::Vector2f blockStartPos(470.f, 420.f);
-	sf::Vector2f block2StartPos(450.f, 400.f);
-	sf::Vector2f block3StartPos(-200.f, -200.f);
-
-	sf::CircleShape bird(20.f);
-	bird.setPosition(birdStartPos);
-	bird.setFillColor(sf::Color::Red);
-	bird.setOutlineThickness(3.f);
-	bird.setOutlineColor(sf::Color::Black);
-
-	sf::CircleShape enemy(20.f);
-	enemy.setPosition(enemyStartPos);
-	enemy.setFillColor(sf::Color(160, 80, 200));
-	enemy.setOutlineThickness(3.f);
-	enemy.setOutlineColor(sf::Color::Black);
-
-	sf::CircleShape enemy2(20.f);
-	enemy2.setPosition(enemy2StartPos);
-	enemy2.setFillColor(sf::Color(255, 170, 0));
-	enemy2.setOutlineThickness(3.f);
-	enemy2.setOutlineColor(sf::Color::Black);
-
-	sf::CircleShape enemy3(20.f);
-	enemy3.setPosition(enemy3StartPos);
-	enemy3.setFillColor(sf::Color(80, 160, 255));
-	enemy3.setOutlineThickness(3.f);
-	enemy3.setOutlineColor(sf::Color::Black);
-
-	sf::RectangleShape block(sf::Vector2f(30.f, 80.f));
-	block.setPosition(blockStartPos);
-	block.setFillColor(sf::Color(120, 90, 60));
-
-	sf::RectangleShape block2(sf::Vector2f(120.f, 20.f));
-	block2.setPosition(block2StartPos);
-	block2.setFillColor(sf::Color(120, 90, 60));
-
-	sf::RectangleShape block3(sf::Vector2f(30.f, 80.f));
-	block3.setPosition(block3StartPos);
-	block3.setFillColor(sf::Color(120, 90, 60));
-
-	GameState gameState = GameState::StartMenu;
-	bool birdReady = true;
-	bool isDragging = false;
-
-	int currentLevel = 1;
-	int nextLevel = 1;
-
-	LevelData currentLevelData = loadLevel(1);
-
-	bool enemyAlive = true;
-	bool enemy2Alive = true;
-	bool enemy3Alive = true;
-	bool enemy2Dropped = false;
-	bool enemy2SupportedByBlock2 = true;
-
-	bool blockAlive = true;
-	int blockHp = 2;
-	bool blockCollisionHandled = false;
-	bool block2Alive = true;
-	int block2Hp = 2;
-	bool block2CollisionHandled = false;
-	bool block2Falling = false;
-	bool block3Alive = true;
-	int block3Hp = 3;
-	bool block3CollisionHandled = false;
-
-	bool roundOver = false;
-
-	int birdsLeft = 3;
-
-	float birdSpeedX = 0.f;
-	float birdSpeedY = 0.f;
-	float gravity = 0.0012f;
-	float maxDragDistance = 120.f;
-	float launchPower = 0.03f;
-
-	// ===== 主循环 =====
-	while (window.isOpen())
-	{
-		// ===== 事件处理区 =====
-		sf::Event event;
-		while (window.pollEvent(event))
-		{
-			if (event.type == sf::Event::Closed)
-			{
-				window.close();
-			}
-
-			if (event.type == sf::Event::KeyPressed)
-			{
-				if (event.key.code == sf::Keyboard::Enter)
-				{
-					if (gameState == GameState::StartMenu)
-					{
-						currentLevel = 1;
-
-						currentLevelData = loadLevel(currentLevel);
-
-						resetRoundForCurrentLevel(
-							bird, enemy, enemy2, enemy3, block, block2, block3,
-							currentLevelData,
-							birdReady, isDragging,
-							enemyAlive, enemy2Alive, enemy3Alive, enemy2Dropped, enemy2SupportedByBlock2,
-							blockAlive, blockHp, blockCollisionHandled,
-							block2Alive, block2Hp, block2CollisionHandled, block2Falling,
-							block3Alive, block3Hp, block3CollisionHandled,
-							roundOver, birdsLeft, birdSpeedX, birdSpeedY, currentLevel);
-
-						gameState = GameState::Playing;
-					}
-
-					if (gameState == GameState::LevelClear)
-					{
-						currentLevel = nextLevel;
-
-						currentLevelData = loadLevel(currentLevel);
-						
-						resetRoundForCurrentLevel(bird, enemy, enemy2, enemy3, block, block2, block3,
-							currentLevelData,
-							birdReady, isDragging,
-							enemyAlive, enemy2Alive, enemy3Alive, enemy2Dropped, enemy2SupportedByBlock2,
-							blockAlive, blockHp, blockCollisionHandled,
-							block2Alive, block2Hp, block2CollisionHandled, block2Falling,
-							block3Alive, block3Hp, block3CollisionHandled,
-							roundOver, birdsLeft, birdSpeedX, birdSpeedY, currentLevel
-						);
-
-						gameState = GameState::Playing;
-					}
-				}
-
-				if (gameState == GameState::Playing)
-				{
-					if (event.key.code == sf::Keyboard::Space)
-					{
-						if (birdReady && !isDragging && birdsLeft > 0)
-						{
-							birdsLeft--;
-							birdReady = false;
-							birdSpeedX = 0.45f;
-							birdSpeedY = -0.55f;
-							roundOver = false;
-						}
-					}
-
-					if (event.key.code == sf::Keyboard::N)
-					{
-						if (roundOver && birdsLeft > 0 &&
-							hasRemainingEnemies(currentLevel,enemyAlive,enemy2Alive,enemy3Alive))
-						{
-							bird.setPosition(currentLevelData.birdStartPos);
-							birdReady = true;
-							isDragging = false;
-							roundOver = false;
-							birdSpeedX = 0.f;
-							birdSpeedY = 0.f;
-							bird.setFillColor(sf::Color::Red);
-						}
-					}
-				}
-				if (event.key.code == sf::Keyboard::R)
-				{
-					if (gameState == GameState::Playing
-						|| gameState == GameState::Win
-						|| gameState == GameState::Lose)
-					{
-						currentLevel = 1;
-
-						currentLevelData = loadLevel(currentLevel);
-
-						resetRoundForCurrentLevel(
-							bird, enemy, enemy2, enemy3, block, block2, block3,
-							currentLevelData,
-							birdReady, isDragging,
-							enemyAlive, enemy2Alive, enemy3Alive, enemy2Dropped, enemy2SupportedByBlock2,
-							blockAlive, blockHp, blockCollisionHandled,
-							block2Alive, block2Hp, block2CollisionHandled, block2Falling,
-							block3Alive, block3Hp, block3CollisionHandled,
-							roundOver, birdsLeft, birdSpeedX, birdSpeedY, currentLevel);
-
-						gameState = GameState::StartMenu;
-					}
-				}
-
-			}
-			if (gameState == GameState::Playing && birdReady && !roundOver && event.type == sf::Event::MouseButtonPressed)
-			{
-				if (event.mouseButton.button == sf::Mouse::Left)
-				{
-					sf::Vector2i mousePixel(event.mouseButton.x, event.mouseButton.y);
-					sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel);
-
-					if (bird.getGlobalBounds().contains(mousePos.x, mousePos.y))
-					{
-						isDragging = true;
-					}
-				}
-			}
-
-			if (gameState == GameState::Playing && birdReady && !roundOver && isDragging && event.type == sf::Event::MouseMoved)
-			{
-				sf::Vector2i mousePixel(event.mouseMove.x, event.mouseMove.y);
-				sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel);
-
-				sf::Vector2f desiredPos(mousePos.x - 20.f, mousePos.y - 20.f);
-
-				if (desiredPos.x > currentLevelData.birdStartPos.x)
-				{
-					desiredPos.x = currentLevelData.birdStartPos.x;
-				}
-
-				if (desiredPos.y < 240.f)
-				{
-					desiredPos.y = 240.f;
-				}
-				sf::Vector2f offset = desiredPos - currentLevelData.birdStartPos;
-
-				float distance = std::sqrt(offset.x * offset.x + offset.y * offset.y);
-
-				if (distance > maxDragDistance && distance > 0.f)
-				{
-					offset.x = offset.x / distance * maxDragDistance;
-					offset.y = offset.y / distance * maxDragDistance;
-					desiredPos = currentLevelData.birdStartPos + offset;
-				}
-
-				bird.setPosition(desiredPos);
-			}
-
-			if (gameState == GameState::Playing && birdReady && !roundOver && isDragging && event.type == sf::Event::MouseButtonReleased)
-			{
-				if (event.mouseButton.button == sf::Mouse::Left)
-				{
-					if (birdsLeft > 0)
-					{
-						sf::Vector2f dragOffset = bird.getPosition() - currentLevelData.birdStartPos;
-
-						birdSpeedX = -dragOffset.x * launchPower;
-						birdSpeedY = -dragOffset.y * launchPower;
-
-						bird.setPosition(currentLevelData.birdStartPos);
-
-						birdsLeft--;
-						birdReady = false;
-						isDragging = false;
-						roundOver = false;
-					}
-				}
-			}
-
-		}
-
-		// ===== 更新区 =====
-		if (gameState == GameState::Playing)
-		{
-			if (birdReady)
-			{
-				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))
-				{
-					bird.move(-0.2f, 0.f);
-				}
-
-				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right))
-				{
-					bird.move(0.2f, 0.f);
-				}
-
-				if (bird.getPosition().x < 40.f)
-				{
-					bird.setPosition(40.f, bird.getPosition().y);
-				}
-
-				if (bird.getPosition().x > 160.f)
-				{
-					bird.setPosition(160.f, bird.getPosition().y);
-				}
-			}
-			if (!birdReady)
-			{
-				bird.move(birdSpeedX, birdSpeedY);
-				birdSpeedY += gravity;
-
-				if (bird.getPosition().y + 40.f >= 500.f)
-				{
-					bird.setPosition(bird.getPosition().x, 460.f);
-					birdSpeedX = 0.f;
-					birdSpeedY = 0.f;
-					bird.setFillColor(sf::Color(150, 150, 150));
-					roundOver = true;
-
-				}
-				//第一个障碍快：两段耐久
-				handleBirdHitBlock(
-					bird, block,
-					blockAlive, blockHp,
-					blockCollisionHandled,
-					birdSpeedX, birdSpeedY
-				);
-
-				//第二个障碍块：两段耐久
-				handleBirdHitBlock(
-					bird, block2,
-					block2Alive, block2Hp,
-					block2CollisionHandled,
-					birdSpeedX, birdSpeedY
-				);
-
-				//第三个障碍快：两段耐久
-				handleBirdHitBlock(
-					bird, block3,
-					block3Alive, block3Hp,
-					block3CollisionHandled,
-					birdSpeedX, birdSpeedY
-				);
-
-				//判断enemy2是否下落
-				if (!block2Alive)
-				{
-					enemy2SupportedByBlock2 = false;
-				}
-
-				//判断小鸟是否命中敌人
-				checkBirdHitEnemies(
-					bird,
-					currentLevel,
-					enemy, enemyAlive,
-					enemy2, enemy2Alive,
-					enemy3, enemy3Alive
-				);
-			}
-			//判断block2是否下落
-			if (!currentLevelData.needBothSupportsForBlock2)
-			{
-				if (!blockAlive && block2Alive)
-				{
-					block2Falling = true;
-				}
-			}
-			else 
-			{
-				if (!blockAlive && !block3Alive && block2Alive)
-				{
-					block2Falling = true;
-				}
-			}
-
-			//enemy2随着block2一起下落
-			if (block2Falling && block2Alive)
-			{
-				if (block2.getPosition().y < 480.f)
-				{
-					block2.move(0.f, 0.25f);
-
-					if (block2.getPosition().y > 480.f)
-					{
-						block2.setPosition(block2.getPosition().x, 480.f);
-					}
-
-					if (enemy2Alive && enemy2SupportedByBlock2)
-					{
-						enemy2.setPosition(enemy2.getPosition().x, block2.getPosition().y - 40.f);
-					}
-				}
-			}
-
-			//enemy被block2砸死
-			if (block2Alive && enemyAlive && block2.getGlobalBounds().intersects(enemy.getGlobalBounds()))
-			{
-				enemyAlive = false;
-			}
-
-			//enemy3被block2砸死
-			if (currentLevel == 2 && block2Alive && enemy3Alive &&
-				block2.getGlobalBounds().intersects(enemy3.getGlobalBounds()))
-			{
-				enemy3Alive=false; 
-			}
-
-			//block2 被打掉后，enemy2下落
-			if (!block2Alive && enemy2Alive && !enemy2SupportedByBlock2)
-			{
-				if (enemy2.getPosition().y < 460.f)
-				{
-					enemy2.move(0.f, 0.3f);
-
-					if (enemy2.getPosition().y > 460.f)
-					{
-						enemy2.setPosition(enemy2.getPosition().x, 460.f);
-					}
-				}
-				else if (!enemy2Dropped)
-				{
-					enemy2Alive = false;
-					enemy2Dropped = true;
-				}
-			}
-
-			//判断场景中有没有移动的物体，从而判断游戏是否结束
-			bool sceneStillMoving = false;
-
-			if (block2Falling && block2Alive && block2.getPosition().y < 480.f)
-			{
-				sceneStillMoving = true;
-			}
-
-			if (!block2Alive && enemy2Alive && !enemy2SupportedByBlock2
-				&& enemy2.getPosition().y < 460.f)
-			{
-				sceneStillMoving = true;
-			}
-
-			// 判断关卡和是否胜利
-			if (allEnemiesDefeated(currentLevel, enemyAlive, enemy2Alive, enemy3Alive))
-			{
-				if (currentLevel == 1)
-				{
-					nextLevel = 2;
-					gameState = GameState::LevelClear;
-				}
-				else if (currentLevel == 2)
-				{
-					gameState = GameState::Win;
-				}
-			}
-
-			if (roundOver && birdsLeft == 0 && !sceneStillMoving)
-			{
-				gameState = GameState::Lose;
-			}
-
-			// ===== 胜利提示 =====
-
-			if (roundOver && birdsLeft > 0)
-			{
-				window.setTitle("HonorBirdGame - Press N for next bird");
-			}
-			else
-			{
-				window.setTitle("HonorBirdGame");
-			}
-
-
-
-			if (roundOver && birdsLeft > 0)
-			{
-				infoText.setString("Press N for next bird");
-			}
-			else if (isDragging)
-			{
-				infoText.setString("Release mouse to Launch");
-			}
-			else if (birdReady)
-			{
-				infoText.setString("Level " + std::to_string(currentLevel) +
-					"  Birds Left: " + std::to_string(birdsLeft) + "  Drag or press Space to launch");
-			}
-			else
-			{
-				infoText.setString("");
-			}
-		}
-		if (gameState == GameState::Win)
-		{
-			window.setTitle("HonorBirdGame - Win");
-			resultTitleText.setString("You Win!");
-			resultHintText.setString("Press R to Return to Menu");
-		}
-		else if (gameState == GameState::Lose)
-		{
-			window.setTitle("HonorBirdGame - Lose");
-			resultTitleText.setString("You Lose!");
-			resultHintText.setString("Press R to Return to Menu");
-		}
-		else if (gameState == GameState::StartMenu)
-		{
-			window.setTitle("HonorBirdGame - Start Menu");
-			titleText.setString("Honor Bird Game");
-			startText.setString("Press ENTER to Start");
-		}
-		else if (gameState == GameState::LevelClear)
-		{
-			window.setTitle("HonorBirdGame - Level Clear!");
-			resultTitleText.setString("Level" + std::to_string(currentLevel) + "Clear!");
-			resultHintText.setString("Press ENTER for Level " + std::to_string(nextLevel));
-		}
-
-		// ===== 绘制区 =====
-		window.clear(sf::Color(135, 206, 235));
-
-		if (gameState == GameState::StartMenu)
-		{
-			window.draw(titleText);
-			window.draw(startText);
-		}
-		else if (gameState == GameState::Playing)
-		{
-			window.draw(ground);
-			window.draw(slingPost);
-
-			if (isDragging)
-			{
-				sf::Vertex line[] =
-				{
-				sf::Vertex(sf::Vector2f(birdStartPos.x + 20.f, birdStartPos.y + 20.f),sf::Color::Black),
-				sf::Vertex(sf::Vector2f(bird.getPosition().x + 20.f, bird.getPosition().y + 20.f),sf::Color::Black)
-				};
-
-				window.draw(line, 2, sf::Lines);
-			}
-
-			window.draw(bird);
-
-			if (blockAlive)
-			{
-				window.draw(block);
-			}
-
-			if (block2Alive)
-			{
-				window.draw(block2);
-			}
-
-			if (block3Alive)
-			{
-				window.draw(block3);
-			}
-
-			drawEnemies(window,
-				currentLevel,
-				enemy, enemyAlive,
-				enemy2, enemy2Alive,
-				enemy3, enemy3Alive
-			);
-
-			window.draw(infoText);
-		}
-		else if (gameState == GameState::Win
-			|| gameState == GameState::Lose
-			|| gameState == GameState::LevelClear)
-		{
-			window.draw(resultTitleText);
-			window.draw(resultHintText);
-		}
-
-		window.display();
-	}
-
-	return 0;
+    // ----- 窗口 / 字体 / 文本 -----
+    sf::RenderWindow window(sf::VideoMode(800, 600), "HonorBirdGame");
+
+    sf::Font font;
+    if (!font.loadFromFile("C:/Windows/Fonts/arial.ttf"))
+    {
+        return -1;
+    }
+
+    sf::Text infoText;
+    infoText.setFont(font);
+    infoText.setCharacterSize(24);
+    infoText.setFillColor(sf::Color::Black);
+    infoText.setPosition(20.f, 20.f);
+
+    sf::Text titleText;
+    titleText.setFont(font);
+    titleText.setCharacterSize(42);
+    titleText.setFillColor(sf::Color::Black);
+    titleText.setPosition(200.f, 180.f);
+
+    sf::Text startText;
+    startText.setFont(font);
+    startText.setCharacterSize(24);
+    startText.setFillColor(sf::Color::Black);
+    startText.setPosition(220.f, 280.f);
+
+    sf::Text resultTitleText;
+    resultTitleText.setFont(font);
+    resultTitleText.setCharacterSize(42);
+    resultTitleText.setFillColor(sf::Color::Black);
+    resultTitleText.setPosition(250.f, 180.f);
+
+    sf::Text resultHintText;
+    resultHintText.setFont(font);
+    resultHintText.setCharacterSize(24);
+    resultHintText.setFillColor(sf::Color::Black);
+    resultHintText.setPosition(210.f, 280.f);
+
+    // ----- 静态场景 -----
+    sf::RectangleShape ground(sf::Vector2f(800.f, 100.f));
+    ground.setPosition(0.f, 500.f);
+    ground.setFillColor(sf::Color(80, 180, 80));
+
+    sf::RectangleShape slingPost(sf::Vector2f(12.f, 110.f));
+    slingPost.setPosition(60.f, 290.f);
+    slingPost.setFillColor(sf::Color(139, 69, 19));
+
+    // ----- 关卡 / 运行时 -----
+    RuntimeState state;
+    LevelData currentLevelData = loadLevel(1);
+
+    // ----- bird -----
+    sf::CircleShape bird(20.f);
+    bird.setOutlineThickness(3.f);
+    bird.setOutlineColor(sf::Color::Black);
+
+    // ----- enemies -----
+    std::array<Enemy, 3> enemies;
+    const std::array<sf::Color, 3> enemyColors = {
+        sf::Color(160, 80, 200),
+        sf::Color(255, 170, 0),
+        sf::Color(80, 160, 255) };
+
+    for (std::size_t i = 0; i < enemies.size(); ++i)
+    {
+        enemies[i].shape = sf::CircleShape(20.f);
+        enemies[i].shape.setOutlineThickness(3.f);
+        enemies[i].shape.setOutlineColor(sf::Color::Black);
+        enemies[i].shape.setFillColor(enemyColors[i]);
+    }
+
+    // ----- blocks -----
+    std::array<Block, 3> blocks;
+    blocks[0].shape = sf::RectangleShape(sf::Vector2f(30.f, 80.f));   // 左支撑
+    blocks[1].shape = sf::RectangleShape(sf::Vector2f(120.f, 20.f));  // 横梁
+    blocks[2].shape = sf::RectangleShape(sf::Vector2f(30.f, 80.f));   // 右支撑
+
+    for (Block& block : blocks)
+    {
+        block.shape.setFillColor(sf::Color(120, 90, 60));
+    }
+
+    // 先按第一关重置一次，确保所有对象状态统一
+    resetLevel(currentLevelData, bird, enemies, blocks, state);
+
+    while (window.isOpen())
+    {
+        // ==================== 事件处理区 ====================
+        sf::Event event;
+        while (window.pollEvent(event))
+        {
+            if (event.type == sf::Event::Closed)
+            {
+                window.close();
+            }
+
+            if (event.type == sf::Event::KeyPressed)
+            {
+                if (event.key.code == sf::Keyboard::Enter)
+                {
+                    if (state.gameState == GameState::StartMenu)
+                    {
+                        state.currentLevel = 1;
+                        currentLevelData = loadLevel(state.currentLevel);
+                        resetLevel(currentLevelData, bird, enemies, blocks, state);
+                        state.gameState = GameState::Playing;
+                    }
+                    else if (state.gameState == GameState::LevelClear)
+                    {
+                        state.currentLevel = state.nextLevel;
+                        currentLevelData = loadLevel(state.currentLevel);
+                        resetLevel(currentLevelData, bird, enemies, blocks, state);
+                        state.gameState = GameState::Playing;
+                    }
+                }
+
+                if (state.gameState == GameState::Playing)
+                {
+                    if (event.key.code == sf::Keyboard::Space)
+                    {
+                        if (state.birdReady && !state.isDragging && state.birdsLeft > 0)
+                        {
+                            state.birdsLeft--;
+                            state.birdReady = false;
+                            state.birdSpeedX = 0.45f;
+                            state.birdSpeedY = -0.55f;
+                            state.roundOver = false;
+                        }
+                    }
+
+                    if (event.key.code == sf::Keyboard::N)
+                    {
+                        if (state.roundOver && state.birdsLeft > 0 && hasRemainingEnemies(enemies))
+                        {
+                            bird.setPosition(currentLevelData.birdStartPos);
+                            state.birdReady = true;
+                            state.isDragging = false;
+                            state.roundOver = false;
+                            state.birdSpeedX = 0.f;
+                            state.birdSpeedY = 0.f;
+
+                            if (state.currentLevel == 1)
+                            {
+                                applyBirdStats(bird, state, BirdType::Normal);
+                            }
+                            else if (state.currentLevel == 2)
+                            {
+                                if (state.birdsLeft == 1)
+                                {
+                                    applyBirdStats(bird, state, BirdType::Mulan);
+                                }
+                                else
+                                {
+                                    applyBirdStats(bird, state, BirdType::Normal);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (event.key.code == sf::Keyboard::R)
+                {
+                    if (state.gameState == GameState::Playing ||
+                        state.gameState == GameState::Win ||
+                        state.gameState == GameState::Lose)
+                    {
+                        state.currentLevel = 1;
+                        currentLevelData = loadLevel(state.currentLevel);
+                        resetLevel(currentLevelData, bird, enemies, blocks, state);
+                        state.gameState = GameState::StartMenu;
+                    }
+                }
+            }
+
+            if (state.gameState == GameState::Playing && state.birdReady && !state.roundOver &&
+                event.type == sf::Event::MouseButtonPressed)
+            {
+                if (event.mouseButton.button == sf::Mouse::Left)
+                {
+                    sf::Vector2i mousePixel(event.mouseButton.x, event.mouseButton.y);
+                    sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel);
+
+                    if (bird.getGlobalBounds().contains(mousePos.x, mousePos.y))
+                    {
+                        state.isDragging = true;
+                    }
+                }
+            }
+
+            if (state.gameState == GameState::Playing && state.birdReady && !state.roundOver &&
+                state.isDragging && event.type == sf::Event::MouseMoved)
+            {
+                sf::Vector2i mousePixel(event.mouseMove.x, event.mouseMove.y);
+                sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel);
+
+                sf::Vector2f desiredPos(mousePos.x - 20.f, mousePos.y - 20.f);
+
+                if (desiredPos.x > currentLevelData.birdStartPos.x)
+                {
+                    desiredPos.x = currentLevelData.birdStartPos.x;
+                }
+
+                if (desiredPos.y < 240.f)
+                {
+                    desiredPos.y = 240.f;
+                }
+
+                sf::Vector2f offset = desiredPos - currentLevelData.birdStartPos;
+                float distance = std::sqrt(offset.x * offset.x + offset.y * offset.y);
+
+                if (distance > state.maxDragDistance && distance > 0.f)
+                {
+                    offset.x = offset.x / distance * state.maxDragDistance;
+                    offset.y = offset.y / distance * state.maxDragDistance;
+                    desiredPos = currentLevelData.birdStartPos + offset;
+                }
+
+                bird.setPosition(desiredPos);
+            }
+
+            if (state.gameState == GameState::Playing && state.birdReady && !state.roundOver &&
+                state.isDragging && event.type == sf::Event::MouseButtonReleased)
+            {
+                if (event.mouseButton.button == sf::Mouse::Left)
+                {
+                    if (state.birdsLeft > 0)
+                    {
+                        sf::Vector2f dragOffset = bird.getPosition() - currentLevelData.birdStartPos;
+                        state.birdSpeedX = -dragOffset.x * state.launchPower;
+                        state.birdSpeedY = -dragOffset.y * state.launchPower;
+
+                        bird.setPosition(currentLevelData.birdStartPos);
+                        state.birdsLeft--;
+                        state.birdReady = false;
+                        state.isDragging = false;
+                        state.roundOver = false;
+                    }
+                }
+            }
+        }
+
+        // ==================== 更新区 ====================
+        if (state.gameState == GameState::Playing)
+        {
+            if (state.birdReady)
+            {
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))
+                {
+                    bird.move(-0.2f, 0.f);
+                }
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right))
+                {
+                    bird.move(0.2f, 0.f);
+                }
+
+                if (bird.getPosition().x < 40.f)
+                {
+                    bird.setPosition(40.f, bird.getPosition().y);
+                }
+                if (bird.getPosition().x > 160.f)
+                {
+                    bird.setPosition(160.f, bird.getPosition().y);
+                }
+            }
+
+            if (!state.birdReady)
+            {
+                bird.move(state.birdSpeedX, state.birdSpeedY);
+                state.birdSpeedY += state.gravity;
+
+                if (bird.getPosition().y + 40.f >= 500.f)
+                {
+                    bird.setPosition(bird.getPosition().x, 460.f);
+                    state.birdSpeedX = 0.f;
+                    state.birdSpeedY = 0.f;
+                    bird.setFillColor(sf::Color(150, 150, 150));
+                    state.roundOver = true;
+                }
+
+                handleBirdHitBlock(bird, blocks[0], state);
+                handleBirdHitBlock(bird, blocks[1], state);
+                handleBirdHitBlock(bird, blocks[2], state);
+
+                if (!blocks[1].alive)
+                {
+                    state.enemy2SupportedByBeam = false;
+                }
+
+                checkBirdHitEnemies(bird, enemies);
+            }
+
+            // 横梁下落规则
+            if (!currentLevelData.needBothSupportsForBeam)
+            {
+                if (!blocks[0].alive && blocks[1].alive)
+                {
+                    state.beamFalling = true;
+                }
+            }
+            else
+            {
+                if (!blocks[0].alive && !blocks[2].alive && blocks[1].alive)
+                {
+                    state.beamFalling = true;
+                }
+            }
+
+            // enemy2 随横梁下落
+            if (state.beamFalling && blocks[1].alive)
+            {
+                if (blocks[1].shape.getPosition().y < 480.f)
+                {
+                    blocks[1].shape.move(0.f, 0.25f);
+
+                    if (blocks[1].shape.getPosition().y > 480.f)
+                    {
+                        blocks[1].shape.setPosition(blocks[1].shape.getPosition().x, 480.f);
+                    }
+
+                    if (enemies[1].alive && state.enemy2SupportedByBeam)
+                    {
+                        enemies[1].shape.setPosition(
+                            enemies[1].shape.getPosition().x,
+                            blocks[1].shape.getPosition().y - 40.f);
+                    }
+                }
+            }
+
+            // 横梁砸死敌人
+            if (blocks[1].alive && enemies[0].alive &&
+                blocks[1].shape.getGlobalBounds().intersects(enemies[0].shape.getGlobalBounds()))
+            {
+                enemies[0].alive = false;
+            }
+
+            if (enemies[2].enabled && blocks[1].alive && enemies[2].alive &&
+                blocks[1].shape.getGlobalBounds().intersects(enemies[2].shape.getGlobalBounds()))
+            {
+                enemies[2].alive = false;
+            }
+
+            // 横梁没了以后 enemy2 自己掉落
+            if (!blocks[1].alive && enemies[1].alive && !state.enemy2SupportedByBeam)
+            {
+                if (enemies[1].shape.getPosition().y < 460.f)
+                {
+                    enemies[1].shape.move(0.f, 0.3f);
+
+                    if (enemies[1].shape.getPosition().y > 460.f)
+                    {
+                        enemies[1].shape.setPosition(enemies[1].shape.getPosition().x, 460.f);
+                    }
+                }
+                else if (!state.enemy2Dropped)
+                {
+                    enemies[1].alive = false;
+                    state.enemy2Dropped = true;
+                }
+            }
+
+            // 场景是否仍在运动
+            bool sceneStillMoving = false;
+
+            if (state.beamFalling && blocks[1].alive && blocks[1].shape.getPosition().y < 480.f)
+            {
+                sceneStillMoving = true;
+            }
+
+            if (!blocks[1].alive && enemies[1].alive && !state.enemy2SupportedByBeam &&
+                enemies[1].shape.getPosition().y < 460.f)
+            {
+                sceneStillMoving = true;
+            }
+
+            // 胜负判断
+            if (allEnemiesDefeated(enemies))
+            {
+                if (state.currentLevel == 1)
+                {
+                    state.nextLevel = 2;
+                    state.gameState = GameState::LevelClear;
+                }
+                else if (state.currentLevel == 2)
+                {
+                    state.gameState = GameState::Win;
+                }
+            }
+
+            if (state.roundOver && state.birdsLeft == 0 && !sceneStillMoving)
+            {
+                state.gameState = GameState::Lose;
+            }
+
+            // 文本提示
+            if (state.roundOver && state.birdsLeft > 0)
+            {
+                window.setTitle("HonorBirdGame - Press N for next bird");
+            }
+            else
+            {
+                window.setTitle("HonorBirdGame");
+            }
+
+            if (state.roundOver && state.birdsLeft > 0)
+            {
+                infoText.setString("Press N for next bird");
+            }
+            else if (state.isDragging)
+            {
+                infoText.setString("Release mouse to Launch");
+            }
+            else if (state.birdReady)
+            {
+                infoText.setString(
+                    "Level " + std::to_string(state.currentLevel) +
+                    "  Birds Left: " + std::to_string(state.birdsLeft) +
+                    "  Bird: " + birdTypeToString(state.currentBirdType));
+            }
+            else
+            {
+                infoText.setString("");
+            }
+        }
+
+        if (state.gameState == GameState::Win)
+        {
+            window.setTitle("HonorBirdGame - Win");
+            resultTitleText.setString("You Win!");
+            resultHintText.setString("Press R to Return to Menu");
+        }
+        else if (state.gameState == GameState::Lose)
+        {
+            window.setTitle("HonorBirdGame - Lose");
+            resultTitleText.setString("You Lose!");
+            resultHintText.setString("Press R to Return to Menu");
+        }
+        else if (state.gameState == GameState::StartMenu)
+        {
+            window.setTitle("HonorBirdGame - Start Menu");
+            titleText.setString("Honor Bird Game");
+            startText.setString("Press ENTER to Start");
+        }
+        else if (state.gameState == GameState::LevelClear)
+        {
+            window.setTitle("HonorBirdGame - Level Clear!");
+            resultTitleText.setString("Level " + std::to_string(state.currentLevel) + " Clear!");
+            resultHintText.setString("Press ENTER for Level " + std::to_string(state.nextLevel));
+        }
+
+        // ==================== 绘制区 ====================
+        window.clear(sf::Color(135, 206, 235));
+
+        if (state.gameState == GameState::StartMenu)
+        {
+            window.draw(titleText);
+            window.draw(startText);
+        }
+        else if (state.gameState == GameState::Playing)
+        {
+            window.draw(ground);
+            window.draw(slingPost);
+
+            if (state.isDragging)
+            {
+                sf::Vertex line[] = {
+                    sf::Vertex(sf::Vector2f(currentLevelData.birdStartPos.x + 20.f, currentLevelData.birdStartPos.y + 20.f), sf::Color::Black),
+                    sf::Vertex(sf::Vector2f(bird.getPosition().x + 20.f, bird.getPosition().y + 20.f), sf::Color::Black) };
+
+                window.draw(line, 2, sf::Lines);
+            }
+
+            window.draw(bird);
+            drawBlocks(window, blocks);
+            drawEnemies(window, enemies);
+            window.draw(infoText);
+        }
+        else if (state.gameState == GameState::Win ||
+            state.gameState == GameState::Lose ||
+            state.gameState == GameState::LevelClear)
+        {
+            window.draw(resultTitleText);
+            window.draw(resultHintText);
+        }
+
+        window.display();
+    }
+
+    return 0;
 }
