@@ -2,9 +2,11 @@
 #include <array>
 #include <cmath>
 #include <string>
-
+#include<vector>
 // ==================== 1. 基础类型定义 ====================
 
+
+//游戏状态
 enum class GameState
 {
     StartMenu,
@@ -45,6 +47,8 @@ struct Block
     bool collisionHandled = false;
 };
 
+
+//每一关的数据（位置，数量，支撑等）
 struct LevelData
 {
     sf::Vector2f birdStartPos;
@@ -53,10 +57,13 @@ struct LevelData
     std::array<sf::Vector2f, 3> blockPositions;
     std::array<bool, 3> blockEnabled;
     std::array<int, 3> blockHp;
-    int birdsCount = 3;
     bool needBothSupportsForBeam = false;
+
+    std::vector<BirdType>birdQueue;
 };
 
+
+//运行状态
 struct RuntimeState
 {
     GameState gameState = GameState::StartMenu;
@@ -72,6 +79,7 @@ struct RuntimeState
     bool beamFalling = false;
 
     int birdsLeft = 3;
+    int currentBirdIndex = 0;
 
     float birdSpeedX = 0.f;
     float birdSpeedY = 0.f;
@@ -85,6 +93,7 @@ struct RuntimeState
 
 // ==================== 2. 配置函数区 ====================
 
+//获取各种鸟的数据并返回
 BirdStats getBirdStats(BirdType type)
 {
     BirdStats stats{};
@@ -111,6 +120,7 @@ BirdStats getBirdStats(BirdType type)
     return stats;
 }
 
+//字体打印
 std::string birdTypeToString(BirdType type)
 {
     if (type == BirdType::Normal)
@@ -124,12 +134,15 @@ std::string birdTypeToString(BirdType type)
     return "Mulan";
 }
 
+//各个关卡数据并返回
 LevelData loadLevel(int level)
 {
     LevelData data{};
 
     if (level == 1)
     {
+        data.birdQueue = { BirdType::Normal,BirdType::Normal,BirdType::Normal };
+
         data.birdStartPos = sf::Vector2f(80.f, 320.f);
 
         data.enemyPositions = {
@@ -146,11 +159,12 @@ LevelData loadLevel(int level)
 
         data.blockEnabled = { true, true, false };
         data.blockHp = { 2, 2, 3 };
-        data.birdsCount = 3;
         data.needBothSupportsForBeam = false;
     }
     else if (level == 2)
     {
+        data.birdQueue = { BirdType::Normal,BirdType::Mulan };
+
         data.birdStartPos = sf::Vector2f(80.f, 320.f);
 
         data.enemyPositions = {
@@ -167,7 +181,6 @@ LevelData loadLevel(int level)
 
         data.blockEnabled = { true, true, true };
         data.blockHp = { 2, 2, 3 };
-        data.birdsCount = 2;
         data.needBothSupportsForBeam = true;
     }
 
@@ -191,18 +204,19 @@ void resetLevel(
     std::array<Block, 3>& blocks,
     RuntimeState& state)
 {
-    bird.setPosition(level.birdStartPos);
-    applyBirdStats(bird, state, BirdType::Normal);
-
+    state.currentBirdIndex = 0;
     state.birdReady = true;
     state.isDragging = false;
     state.roundOver = false;
     state.enemy2Dropped = false;
     state.enemy2SupportedByBeam = true;
     state.beamFalling = false;
-    state.birdsLeft = level.birdsCount;
+    state.birdsLeft = static_cast<int>(level.birdQueue.size());
     state.birdSpeedX = 0.f;
     state.birdSpeedY = 0.f;
+
+    bird.setPosition(level.birdStartPos);
+    applyBirdStats(bird, state, level.birdQueue[state.currentBirdIndex]);
 
     for (std::size_t i = 0; i < enemies.size(); ++i)
     {
@@ -313,6 +327,142 @@ void checkBirdHitEnemies(const sf::CircleShape& bird, std::array<Enemy, 3>& enem
         {
             enemy.alive = false;
         }
+    }
+}
+
+void checkBeamHItEnemies(const Block& beam, std::array<Enemy, 3>& enemies)
+{
+    if (!beam.enabled || !beam.alive)
+    {
+        return;
+    }
+    for (Enemy& enemy : enemies)
+    {
+        if (!enemy.enabled || !enemy.alive)
+        {
+            continue;
+        }
+
+        if (beam.shape.getGlobalBounds().intersects(enemy.shape.getGlobalBounds()))
+        {
+            enemy.alive = false;
+		}
+    }
+}
+
+void updateEnemy2Falling(
+    std::array<Enemy, 3>& enemies,
+    Block& beam,
+    RuntimeState& state)
+{
+    // enemy2 随横梁一起下落
+    if (state.beamFalling && beam.alive)
+    {
+        if (beam.shape.getPosition().y < 480.f)
+        {
+            beam.shape.move(0.f, 0.25f);
+
+            if (beam.shape.getPosition().y > 480.f)
+            {
+                beam.shape.setPosition(beam.shape.getPosition().x, 480.f);
+            }
+
+            if (enemies[1].alive && state.enemy2SupportedByBeam)
+            {
+                enemies[1].shape.setPosition(
+                    enemies[1].shape.getPosition().x,
+                    beam.shape.getPosition().y - 40.f);
+            }
+        }
+    }
+
+    // 横梁没了以后，enemy2 自己下落
+    if (!beam.alive && enemies[1].alive && !state.enemy2SupportedByBeam)
+    {
+        if (enemies[1].shape.getPosition().y < 460.f)
+        {
+            enemies[1].shape.move(0.f, 0.3f);
+
+            if (enemies[1].shape.getPosition().y > 460.f)
+            {
+                enemies[1].shape.setPosition(enemies[1].shape.getPosition().x, 460.f);
+            }
+        }
+        else if (!state.enemy2Dropped)
+        {
+            enemies[1].alive = false;
+            state.enemy2Dropped = true;
+        }
+    }
+}
+
+void updateBeamFallingState(
+    const LevelData& level,
+    const std::array<Block, 3>& blocks,
+    RuntimeState& state)
+{
+    if (state.beamFalling)
+    {
+        return;
+    }
+
+    if (!level.needBothSupportsForBeam)
+    {
+        if (!blocks[0].alive && blocks[1].alive)
+        {
+            state.beamFalling = true;
+        }
+    }
+    else
+    {
+        if (!blocks[0].alive && !blocks[2].alive && blocks[1].alive)
+        {
+            state.beamFalling = true;
+        }
+    }
+}
+
+bool hasPendingResolution(
+    const std::array<Enemy, 3>& enemies,
+    const Block& beam,
+    const RuntimeState& state)
+{
+    if (state.beamFalling && beam.alive && beam.shape.getPosition().y < 480.f)
+    {
+        return true;
+    }
+
+    if (!beam.alive && enemies[1].alive &&
+        !state.enemy2SupportedByBeam &&
+        enemies[1].shape.getPosition().y < 460.f)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void updateGameResult(
+    const std::array<Enemy, 3>& enemies,
+    RuntimeState& state,
+    bool hasPendingResolutionNow)
+{
+    if (allEnemiesDefeated(enemies))
+    {
+        if (state.currentLevel == 1)
+        {
+            state.nextLevel = 2;
+            state.gameState = GameState::LevelClear;
+        }
+        else if (state.currentLevel == 2)
+        {
+            state.gameState = GameState::Win;
+        }
+    }
+
+    if (state.roundOver && state.birdsLeft == 0 && !hasPendingResolutionNow)
+    {
+        state.gameState = GameState::Lose;
     }
 }
 
@@ -461,20 +611,23 @@ int main()
 
                 if (state.gameState == GameState::Playing)
                 {
+                    //发射当前bird：一旦发射，birdsLeft减1
                     if (event.key.code == sf::Keyboard::Space)
                     {
                         if (state.birdReady && !state.isDragging && state.birdsLeft > 0)
                         {
                             state.birdsLeft--;
                             state.birdReady = false;
-                            state.birdSpeedX = 0.45f;
-                            state.birdSpeedY = -0.55f;
+                            state.birdSpeedX = 15.f * state.launchPower;
+							state.birdSpeedY = -18.f * state.launchPower;
+
                             state.roundOver = false;
                         }
                     }
 
                     if (event.key.code == sf::Keyboard::N)
                     {
+                        //N键：切到队列中的下一只bird，不减少birdsLeft
                         if (state.roundOver && state.birdsLeft > 0 && hasRemainingEnemies(enemies))
                         {
                             bird.setPosition(currentLevelData.birdStartPos);
@@ -484,20 +637,11 @@ int main()
                             state.birdSpeedX = 0.f;
                             state.birdSpeedY = 0.f;
 
-                            if (state.currentLevel == 1)
+                           if(state.currentBirdIndex+1 < static_cast<int>(currentLevelData.birdQueue.size()))
                             {
-                                applyBirdStats(bird, state, BirdType::Normal);
-                            }
-                            else if (state.currentLevel == 2)
-                            {
-                                if (state.birdsLeft == 1)
-                                {
-                                    applyBirdStats(bird, state, BirdType::Mulan);
-                                }
-                                else
-                                {
-                                    applyBirdStats(bird, state, BirdType::Normal);
-                                }
+                                state.currentBirdIndex++;
+
+                                applyBirdStats(bird, state, currentLevelData.birdQueue[state.currentBirdIndex]);
                             }
                         }
                     }
@@ -563,6 +707,7 @@ int main()
                 bird.setPosition(desiredPos);
             }
 
+            //拖曳发射当前bird：一旦发射，birdsLeft减1
             if (state.gameState == GameState::Playing && state.birdReady && !state.roundOver &&
                 state.isDragging && event.type == sf::Event::MouseButtonReleased)
             {
@@ -635,106 +780,19 @@ int main()
             }
 
             // 横梁下落规则
-            if (!currentLevelData.needBothSupportsForBeam)
-            {
-                if (!blocks[0].alive && blocks[1].alive)
-                {
-                    state.beamFalling = true;
-                }
-            }
-            else
-            {
-                if (!blocks[0].alive && !blocks[2].alive && blocks[1].alive)
-                {
-                    state.beamFalling = true;
-                }
-            }
+			updateBeamFallingState(currentLevelData, blocks, state);
 
-            // enemy2 随横梁下落
-            if (state.beamFalling && blocks[1].alive)
-            {
-                if (blocks[1].shape.getPosition().y < 480.f)
-                {
-                    blocks[1].shape.move(0.f, 0.25f);
-
-                    if (blocks[1].shape.getPosition().y > 480.f)
-                    {
-                        blocks[1].shape.setPosition(blocks[1].shape.getPosition().x, 480.f);
-                    }
-
-                    if (enemies[1].alive && state.enemy2SupportedByBeam)
-                    {
-                        enemies[1].shape.setPosition(
-                            enemies[1].shape.getPosition().x,
-                            blocks[1].shape.getPosition().y - 40.f);
-                    }
-                }
-            }
-
+            // 横梁没了以后 enemy2 自己掉落// enemy2 随横梁下落
+           
+			updateEnemy2Falling(enemies, blocks[1], state);
             // 横梁砸死敌人
-            if (blocks[1].alive && enemies[0].alive &&
-                blocks[1].shape.getGlobalBounds().intersects(enemies[0].shape.getGlobalBounds()))
-            {
-                enemies[0].alive = false;
-            }
-
-            if (enemies[2].enabled && blocks[1].alive && enemies[2].alive &&
-                blocks[1].shape.getGlobalBounds().intersects(enemies[2].shape.getGlobalBounds()))
-            {
-                enemies[2].alive = false;
-            }
-
-            // 横梁没了以后 enemy2 自己掉落
-            if (!blocks[1].alive && enemies[1].alive && !state.enemy2SupportedByBeam)
-            {
-                if (enemies[1].shape.getPosition().y < 460.f)
-                {
-                    enemies[1].shape.move(0.f, 0.3f);
-
-                    if (enemies[1].shape.getPosition().y > 460.f)
-                    {
-                        enemies[1].shape.setPosition(enemies[1].shape.getPosition().x, 460.f);
-                    }
-                }
-                else if (!state.enemy2Dropped)
-                {
-                    enemies[1].alive = false;
-                    state.enemy2Dropped = true;
-                }
-            }
+			checkBeamHItEnemies(blocks[1], enemies);
 
             // 场景是否仍在运动
-            bool sceneStillMoving = false;
+            bool hasPendingResolutionNow = hasPendingResolution(enemies, blocks[1], state);
 
-            if (state.beamFalling && blocks[1].alive && blocks[1].shape.getPosition().y < 480.f)
-            {
-                sceneStillMoving = true;
-            }
-
-            if (!blocks[1].alive && enemies[1].alive && !state.enemy2SupportedByBeam &&
-                enemies[1].shape.getPosition().y < 460.f)
-            {
-                sceneStillMoving = true;
-            }
-
-            // 胜负判断
-            if (allEnemiesDefeated(enemies))
-            {
-                if (state.currentLevel == 1)
-                {
-                    state.nextLevel = 2;
-                    state.gameState = GameState::LevelClear;
-                }
-                else if (state.currentLevel == 2)
-                {
-                    state.gameState = GameState::Win;
-                }
-            }
-
-            if (state.roundOver && state.birdsLeft == 0 && !sceneStillMoving)
-            {
-                state.gameState = GameState::Lose;
-            }
+			// 胜负判断
+			updateGameResult(enemies, state, hasPendingResolutionNow);
 
             // 文本提示
             if (state.roundOver && state.birdsLeft > 0)
@@ -758,8 +816,9 @@ int main()
             {
                 infoText.setString(
                     "Level " + std::to_string(state.currentLevel) +
-                    "  Birds Left: " + std::to_string(state.birdsLeft) +
-                    "  Bird: " + birdTypeToString(state.currentBirdType));
+                    "  Birds Remaining: " + std::to_string(state.birdsLeft) +
+                    "  Bird: " + birdTypeToString(state.currentBirdType) +
+                    "Slot:" + std::to_string(state.currentBirdIndex + 1));
             }
             else
             {

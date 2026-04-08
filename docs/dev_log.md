@@ -240,3 +240,27 @@
 
 \- 初步接入 BirdStats，使第二关最后一只 bird 切换为更高建筑伤害的重击鸟
 
+
+
+\## Day 12
+
+\- 将鸟的切换逻辑正式改为 birdQueue 驱动，关卡中的鸟种类与顺序由 LevelData 控制
+
+\- 在 RuntimeState 中加入 currentBirdIndex，用于记录当前使用的是队列中的第几只鸟
+
+\- resetLevel 现在会根据 birdQueue 初始化第一只鸟，并按队列长度设置 birdsLeft
+
+\- N 键切换下一只鸟时，改为从 birdQueue 中读取下一只 bird 的类型，并增加边界保护
+
+\- Space 发射也改为读取 state.launchPower，使快捷发射与拖拽发射统一受 BirdStats 控制
+
+\- 左上角信息增加当前 bird 类型与 Slot 显示，方便调试 birdQueue
+
+\- 将横梁砸敌人逻辑抽为 checkBeamHitEnemies
+
+\- 将 enemy2 跟横梁下落 / 横梁消失后自行掉落逻辑抽为 updateEnemy2Falling
+
+\- 将“是否还有待结算的动态过程”与胜负判断进一步整理，更新区逻辑更清晰
+
+\- 明确后续主线：从 Day 13 开始，围绕建筑类型、敌人类型和可扩展玩法链继续推进
+
