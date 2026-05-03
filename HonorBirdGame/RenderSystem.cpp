@@ -39,3 +39,12 @@ void drawBlocks(sf::RenderWindow& window, const std::vector<Block>& blocks)
         }
     }
 }
+
+void drawMulanSwordQi(sf::RenderWindow& window, const SwordQi& swordQi)
+{
+    if (!swordQi.active)
+    {
+        return;
+    }
+    window.draw(swordQi.sprite);
+}

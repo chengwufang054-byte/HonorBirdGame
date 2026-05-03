@@ -29,6 +29,13 @@ void resetLevel(
     state.skillEffectTimer = 0.f;
     state.skillEffectDuration = 0.92f;
     state.skillVoiceDuration = 1.20f;
+  
+    state.mulanSkillStage = 0;
+	state.mulanSkillLineTimer = 0.f;
+    state.mulanFreezeTimer = 0.f;
+    state.mulanSwordQi.active = false;
+    state.mulanSwordQi.lifeTimer = 0.f;
+    
     state.birdsRemaining = static_cast<int>(level.birdQueue.size());
     state.birdSpeedX = 0.f;
     state.birdSpeedY = 0.f;
@@ -280,7 +287,7 @@ void checkFallingBlocksHitEnemies(std::vector<Block>& blocks, std::vector<Enemy>
     }
 }
 
-void updateFallingBlocks(std::vector<Block>& blocks, float gameplayScale)
+void updateFallingBlocks(std::vector<Block>& blocks, float gameplayScale,float dt)
 {
     for (Block& block : blocks)
     {
@@ -289,7 +296,7 @@ void updateFallingBlocks(std::vector<Block>& blocks, float gameplayScale)
             continue;
         }
 
-        block.shape.move(0.f, 0.6f * gameplayScale);
+        block.shape.move(0.f, 0.6f * gameplayScale*dt);
 
         const float blockBottom = block.shape.getPosition().y + block.shape.getSize().y;
         if (blockBottom >= GROUND_TOP)

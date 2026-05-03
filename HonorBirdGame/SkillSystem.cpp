@@ -281,3 +281,147 @@ void drawCharlotteSkillEffect(sf::RenderWindow& window, const RuntimeState& stat
         window.draw(innerRing);
     }
 }
+
+void applySwordQiDamageToBlock(Block& block, int damage)
+{
+    if (!block.alive)
+    {
+        return;
+    }
+
+    block.hp -= damage;
+    block.hitFlashTimer = 0.26f;
+
+    if (block.hp == 2)
+    {
+        block.shape.setFillColor(sf::Color(100, 75, 50));
+    }
+    else if (block.hp == 1)
+    {
+        block.shape.setFillColor(sf::Color(80, 60, 40));
+    }
+
+    if (block.hp <= 0)
+    {
+        block.hp = 0;
+        block.alive = false;
+    }
+}
+
+// 初始化花木兰技能特效
+bool initMulanSwordQi(RuntimeState& state, const std::string& texturePath)
+{
+    sf::Image image;
+    if (!image.loadFromFile(texturePath))
+    {
+        return false;
+    }
+
+    image.createMaskFromColor(sf::Color::White, 20);
+
+    if (!state.mulanSwordQi.texture.loadFromImage(image))
+    {
+        return false;
+    }
+
+    state.mulanSwordQi.sprite.setTexture(state.mulanSwordQi.texture);
+    state.mulanSwordQi.active = false;
+    state.mulanSwordQi.lifeTimer = 0.f;
+    state.mulanSwordQi.maxLifeTime = 0.65f;
+    state.mulanSwordQi.damage = 3;
+
+    return true;
+}
+
+void spawnMulanSwordQi(
+    const sf::CircleShape& bird,
+    RuntimeState& state)
+{
+    const sf::Vector2f birdCenter = getCircleCenter(bird);
+
+    SwordQi& swordQi = state.mulanSwordQi;
+
+    swordQi.active = true;
+    swordQi.damage = 3;
+    swordQi.lifeTimer = 0.f;
+    swordQi.maxLifeTime = 3.0f;
+
+    sf::Vector2u textureSize = swordQi.texture.getSize();
+
+    swordQi.sprite.setOrigin(
+        textureSize.x * 0.5f,
+        textureSize.y * 0.5f
+    );
+
+    // Negative X scale flips the image horizontally.
+    // This makes the convex side face outward.
+    swordQi.sprite.setScale(-0.75f, 0.75f);
+
+    swordQi.sprite.setRotation(18.f);
+    swordQi.sprite.setPosition(birdCenter.x + 75.f, birdCenter.y + 20.f);
+
+    swordQi.velocity = sf::Vector2f(620.f, 360.f);
+}
+
+void updateMulanSwordQi(
+    std::vector<Enemy>& enemies,
+    std::vector<Block>& blocks,
+    RuntimeState& state,
+    float dt)
+{
+    SwordQi& swordQi = state.mulanSwordQi;
+
+    if (!swordQi.active)
+    {
+        return;
+    }
+
+    swordQi.lifeTimer += dt;
+    swordQi.sprite.move(swordQi.velocity * dt);
+
+    sf::FloatRect swordBounds = swordQi.sprite.getGlobalBounds();
+
+    if (swordBounds.top > WORLD_HEIGHT + 80.f || swordQi.lifeTimer > swordQi.maxLifeTime)
+    {
+        swordQi.active = false;
+        return;
+    }
+
+    for (Enemy& enemy : enemies)
+    {
+        if (!enemy.alive)
+        {
+            continue;
+        }
+
+        if (enemy.hitFlashTimer > 0.f)
+        {
+            continue;
+        }
+
+        if (swordBounds.intersects(enemy.shape.getGlobalBounds()))
+        {
+            applyEnemyDamage(enemy, swordQi.damage);
+            enemy.hitFlashTimer = 0.26f;
+        }
+    }
+
+    for (Block& block : blocks)
+    {
+        if (!block.alive)
+        {
+            continue;
+        }
+
+        if (block.hitFlashTimer > 0.f)
+        {
+            continue;
+        }
+
+        if (swordBounds.intersects(block.shape.getGlobalBounds()))
+        {
+            applySwordQiDamageToBlock(block, swordQi.damage);
+            block.hitFlashTimer = 0.26f;
+        }
+    }
+}

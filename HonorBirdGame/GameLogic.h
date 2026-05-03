@@ -18,6 +18,6 @@ bool areAllSupportsDestroyed(const Block& block, const std::vector<Block>& block
 void updateBeamFallingState(std::vector<Block>& blocks);
 bool hasEnemyBeenDamagedByBlock(const Block& block, int enemyIndex);
 void checkFallingBlocksHitEnemies(std::vector<Block>& blocks, std::vector<Enemy>& enemies);
-void updateFallingBlocks(std::vector<Block>& blocks, float gameplayScale);
+void updateFallingBlocks(std::vector<Block>& blocks, float gameplayScale,float dt);
 bool hasPendingResolution(const std::vector<Block>& blocks);
 void updateGameResult(const std::vector<Enemy>& enemies, RuntimeState& state, bool pendingResolution);

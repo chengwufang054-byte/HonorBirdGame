@@ -7,21 +7,21 @@ BirdStats getBirdStats(BirdType type)
     if (type == BirdType::Normal)
     {
         stats.color = sf::Color::Red;
-        stats.launchPower = 0.026f;
+        stats.launchPower = 14.8f;
         stats.blockDamage = 1;
         stats.enemyDamage = 1;
     }
     else if (type == BirdType::Charlotte)
     {
         stats.color = sf::Color(255, 120, 180);
-        stats.launchPower = 0.030f;
+        stats.launchPower = 16.8f;
         stats.blockDamage = 1;
         stats.enemyDamage = 1;
     }
     else
     {
         stats.color = sf::Color(255, 200, 80);
-        stats.launchPower = 0.024f;
+        stats.launchPower = 12.8;
         stats.blockDamage = 2;
         stats.enemyDamage = 2;
     }
@@ -58,8 +58,8 @@ LevelData loadLevel(int level)
 
     if (level == 1)
     {
-        data.homeViewCenter = sf::Vector2f(835.f, 450.f);
-        data.homeViewSize = sf::Vector2f(1450.f, 820.f);
+        data.homeViewCenter = sf::Vector2f(910.f, 450.f);
+        data.homeViewSize = sf::Vector2f(1600.f, 850.f);
 
         data.birdQueue = { BirdType::Normal, BirdType::Mulan, BirdType::Charlotte };
 
@@ -77,10 +77,10 @@ LevelData loadLevel(int level)
     }
     else if (level == 2)
     {
-        data.homeViewCenter = sf::Vector2f(1025.f, 450.f);
-        data.homeViewSize = sf::Vector2f(1850.f, 820.f);
+        data.homeViewCenter = sf::Vector2f(930.f, 450.f);
+        data.homeViewSize = sf::Vector2f(1600.f, 900.f);
 
-        data.birdQueue = { BirdType::Normal, BirdType::Charlotte, BirdType::Mulan };
+        data.birdQueue = { BirdType::Normal, BirdType::Charlotte, BirdType::Charlotte, BirdType::Mulan,BirdType::Mulan };
 
         data.enemySpawns = {
             {EnemyType::Normal, sf::Vector2f(1060.f, 710.f), 1},
@@ -101,13 +101,15 @@ LevelData loadLevel(int level)
     }
     else
     {
-        data.homeViewCenter = sf::Vector2f(1125.f, 450.f);
-        data.homeViewSize = sf::Vector2f(2050.f, 820.f);
+        data.homeViewCenter = sf::Vector2f(930.f, 450.f);
+        data.homeViewSize = sf::Vector2f(1600.f, 900.f);
 
         data.birdQueue = {
             BirdType::Normal,
             BirdType::Charlotte,
             BirdType::Charlotte,
+			BirdType::Charlotte,
+            BirdType::Mulan,
             BirdType::Mulan,
             BirdType::Mulan
         };

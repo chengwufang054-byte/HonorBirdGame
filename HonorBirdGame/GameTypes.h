@@ -4,8 +4,8 @@
 #include <vector>
 
 // Core constants
-const unsigned int WINDOW_WIDTH = 1280;
-const unsigned int WINDOW_HEIGHT = 720;
+const unsigned int WINDOW_WIDTH = 1600;
+const unsigned int WINDOW_HEIGHT = 900;
 
 const float WORLD_WIDTH = 3000.f;
 const float WORLD_HEIGHT = 900.f;
@@ -14,7 +14,7 @@ const float DEFAULT_VIEW_WIDTH = 1600.f;
 const float DEFAULT_VIEW_HEIGHT = 900.f;
 
 const float GROUND_TOP = 760.f;
-const sf::Vector2f DEFAULT_VIEW_CENTER(930.f, 450.f);
+const sf::Vector2f DEFAULT_VIEW_CENTER(800.f, 450.f);
 const sf::Vector2f DEFAULT_BIRD_START(180.f, 700.f);
 
 enum class GameState
@@ -81,6 +81,17 @@ struct Block
     float hitFlashTimer = 0.f;
 };
 
+struct SwordQi
+{
+    sf::Texture texture;
+    sf::Sprite sprite;
+    sf::Vector2f velocity{ 0.f, 0.f };
+    int damage = 3;
+    bool active = false;
+    float lifeTimer = 0.f;
+    float maxLifeTime = 0.65f;
+};
+
 struct EnemySpawnData
 {
     EnemyType type = EnemyType::Normal;
@@ -128,17 +139,24 @@ struct RuntimeState
     bool skillDamageApplied = false;
     float skillEffectTimer = 0.f;
     sf::Vector2f skillEffectCenter{ 0.f, 0.f };
-    float skillEffectRadius = 220.f;
+    float skillEffectRadius = 210.f;
     float skillEffectDuration = 0.92f;
     float skillVoiceDuration = 1.20f;
+
+    // 花木兰两段技能状态
+ // 0：还没释放；1：已释放第一段，可以释放第二段；2：两段都用完
+    int mulanSkillStage = 0;
+    float mulanSkillLineTimer = 0.f;
+    float mulanFreezeTimer = 0.f;
+    SwordQi mulanSwordQi;
 
     float birdSpeedX = 0.f;
     float birdSpeedY = 0.f;
     float preLaunchViewOffsetX = 0.f;
-    float gravity = 0.0012f;
-    float maxDragDistance = 150.f;
+    float gravity = 1850.f;
+    float maxDragDistance = 320.f;
 
     BirdType currentBirdType = BirdType::Normal;
     BirdStats currentBirdStats{ sf::Color::Red, 0.03f, 1, 1 };
-    float launchPower = 0.03f;
+    float launchPower = 7.0f;
 };

@@ -5,3 +5,5 @@
 
 void drawEnemies(sf::RenderWindow& window, const std::vector<Enemy>& enemies);
 void drawBlocks(sf::RenderWindow& window, const std::vector<Block>& blocks);
+
+void drawMulanSwordQi(sf::RenderWindow& window, const SwordQi& swordQi);
