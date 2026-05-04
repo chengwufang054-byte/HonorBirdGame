@@ -275,7 +275,7 @@ int main()
                 {
                     if (state.gameState == GameState::StartMenu)
                     {
-                        state.currentLevel = 1;
+                        state.currentLevel = 3;
                         currentLevelData = loadLevel(state.currentLevel);
                         resetLevel(currentLevelData, bird, enemies, blocks, state);
                         gameView.setCenter(currentLevelData.homeViewCenter);
